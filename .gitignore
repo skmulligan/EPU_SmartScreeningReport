@@ -26,6 +26,14 @@ dist/
 *.egg-info/
 .eggs/
 
+# Generated reports and local QA artifacts
+output/
+tmp/
+
+# Local screening-session data (large microscope images and metadata)
+/example-screening-session/
+/screening_session_tree.txt
+
 # IDE and editor files
 .idea/
 .vscode/
