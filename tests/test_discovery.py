@@ -19,13 +19,13 @@ def _write_jpg(path: Path) -> None:
 
 
 def test_extract_project_number() -> None:
-    assert extract_project_number("160800_example_atlases_20260729") == "160800"
+    assert extract_project_number("160230_example_atlases_20260729") == "160230"
     assert extract_project_number("160801ProjectName") == "160801"
 
 
 @pytest.mark.parametrize(
     "name",
-    ["project_160800", "16080_too_short", "1608000_too_long", "161800_wrong_series"],
+    ["project_160230", "16023_too_short", "1602300_too_long", "161800_wrong_series"],
 )
 def test_extract_project_number_rejects_invalid_names(name: str) -> None:
     with pytest.raises(DiscoveryError):
@@ -33,13 +33,13 @@ def test_extract_project_number_rejects_invalid_names(name: str) -> None:
 
 
 def test_discovers_slots_in_numeric_order_and_matches_sample_atlas(tmp_path: Path) -> None:
-    atlas_root = tmp_path / "160800_example_atlases_20260729"
+    atlas_root = tmp_path / "160230_example_atlases_20260729"
     atlas_root.mkdir()
     (tmp_path / f"{atlas_root.name}_Slot10").mkdir()
     (tmp_path / f"{atlas_root.name}_Slot2").mkdir()
     (tmp_path / f"{atlas_root.name}_Slot13").mkdir()
     (tmp_path / f"{atlas_root.name}_Slot2_extra").mkdir()
-    (tmp_path / "160800_other_session_Slot3").mkdir()
+    (tmp_path / "160230_other_session_Slot3").mkdir()
     atlas_image = atlas_root / "Sample2" / "Atlas" / "Atlas_123.jpg"
     _write_jpg(atlas_image)
 
@@ -48,12 +48,12 @@ def test_discovers_slots_in_numeric_order_and_matches_sample_atlas(tmp_path: Pat
     assert [grid.slot for grid in grids] == [2, 10]
     assert grids[0].atlas_image == atlas_image
     assert grids[1].atlas_image is None
-    assert all(grid.project_number == "160800" for grid in grids)
+    assert all(grid.project_number == "160230" for grid in grids)
 
 
 def test_rejects_missing_atlas_directory(tmp_path: Path) -> None:
     with pytest.raises(DiscoveryError, match="does not exist"):
-        discover_grid_folders(tmp_path / "160800_missing")
+        discover_grid_folders(tmp_path / "160230_missing")
 
 
 def test_custom_profile_discovers_non_epu_session_names(tmp_path: Path) -> None:

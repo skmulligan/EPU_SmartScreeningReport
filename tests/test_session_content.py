@@ -15,7 +15,7 @@ def _jpg(path: Path, color: tuple[int, int, int] = (80, 100, 120)) -> None:
 
 
 def test_discovers_hierarchy_and_orders_squares_by_acquisition(tmp_path: Path) -> None:
-    slot_path = tmp_path / "160800_session_Slot2"
+    slot_path = tmp_path / "160230_session_Slot2"
     early = slot_path / "Images-Disc2" / "GridSquare_200"
     late = slot_path / "Images-Disc1" / "GridSquare_100"
     missing = slot_path / "Images-Disc1" / "GridSquare_300"
@@ -34,7 +34,7 @@ def test_discovers_hierarchy_and_orders_squares_by_acquisition(tmp_path: Path) -
         GridFolder(
             slot=2,
             path=slot_path,
-            project_number="160800",
+            project_number="160230",
             atlas_image=None,
         )
     )
@@ -54,7 +54,7 @@ def test_discovers_hierarchy_and_orders_squares_by_acquisition(tmp_path: Path) -
 
 
 def test_missing_data_mrc_is_recorded_as_none(tmp_path: Path) -> None:
-    slot_path = tmp_path / "160800_session_Slot2"
+    slot_path = tmp_path / "160230_session_Slot2"
     square = slot_path / "Images-Disc1" / "GridSquare_100"
     _jpg(square / "GridSquare_20260729_120000.jpg")
     data_image = square / "Data" / "FoilHole_20_Data_900_0_20260729_120300.jpg"
@@ -64,7 +64,7 @@ def test_missing_data_mrc_is_recorded_as_none(tmp_path: Path) -> None:
         GridFolder(
             slot=2,
             path=slot_path,
-            project_number="160800",
+            project_number="160230",
             atlas_image=None,
         )
     )

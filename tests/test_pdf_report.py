@@ -63,7 +63,7 @@ def _data_xml() -> str:
 
 
 def test_generates_overview_and_one_page_per_grid(tmp_path: Path) -> None:
-    atlas_root = tmp_path / "160800_example_atlases_20260729"
+    atlas_root = tmp_path / "160230_example_atlases_20260729"
     atlas_root.mkdir()
     (tmp_path / f"{atlas_root.name}_Slot2").mkdir()
     (tmp_path / f"{atlas_root.name}_Slot3").mkdir()
@@ -85,7 +85,7 @@ def test_generates_overview_and_one_page_per_grid(tmp_path: Path) -> None:
     with pdfplumber.open(output) as pdf:
         assert len(pdf.pages) == 3
         text = "\n".join(page.extract_text() or "" for page in pdf.pages)
-    assert "160800 Screening Report" in text
+    assert "160230 Screening Report" in text
     assert "Slot 2" in text
     assert "Slot 3" in text
     assert "GridSquare summary" in text
@@ -93,9 +93,9 @@ def test_generates_overview_and_one_page_per_grid(tmp_path: Path) -> None:
 
 
 def test_generates_landscape_gridsquare_and_foil_pages(tmp_path: Path) -> None:
-    atlas_root = tmp_path / "160800_session"
+    atlas_root = tmp_path / "160230_session"
     atlas_root.mkdir()
-    slot = tmp_path / "160800_session_Slot2"
+    slot = tmp_path / "160230_session_Slot2"
     square = slot / "Images-Disc1" / "GridSquare_10"
     square.mkdir(parents=True)
     Image.new("RGB", (128, 128), "gray").save(
@@ -155,7 +155,7 @@ def test_generates_landscape_gridsquare_and_foil_pages(tmp_path: Path) -> None:
 
 
 def test_cover_preserves_double_digit_slot_folder_names(tmp_path: Path) -> None:
-    atlas_root = tmp_path / "160800_CL_apoSK04_SS_atlases_20260729"
+    atlas_root = tmp_path / "160230_CL_apoSK04_SS_atlases_20260729"
     atlas_root.mkdir()
     expected_names = []
     for slot in (10, 11, 12):
@@ -231,7 +231,7 @@ def _slot_content_with_metadata(
     grid = GridFolder(
         slot=2,
         path=tmp_path,
-        project_number="160800",
+        project_number="160230",
         atlas_image=None,
     )
     square = GridSquareRecord(
@@ -278,7 +278,7 @@ def test_cover_configuration_aggregates_mixed_and_unavailable_values(
 
 
 def test_email_quality_report_is_smaller_than_high_quality(tmp_path: Path) -> None:
-    atlas_root = tmp_path / "160800_quality_test"
+    atlas_root = tmp_path / "160230_quality_test"
     atlas_root.mkdir()
     (tmp_path / f"{atlas_root.name}_Slot2").mkdir()
     atlas_image = atlas_root / "Sample2" / "Atlas" / "Atlas_123.jpg"

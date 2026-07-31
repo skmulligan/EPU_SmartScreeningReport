@@ -58,18 +58,18 @@ is preferred.
 
 ```text
 session-parent/
-├── 160800_example_atlases_20260729/
+├── 160230_example_atlases_20260729/
 │   ├── Sample2/Atlas/Atlas_12345678.jpg
 │   └── Sample3/Atlas/Atlas_23456789.jpg
-├── 160800_example_atlases_20260729_Slot2/
+├── 160230_example_atlases_20260729_Slot2/
 │   └── Images-Disc1/GridSquare_.../Data/
 │       ├── FoilHole_..._Data_...jpg
 │       └── FoilHole_..._Data_...mrc
-└── 160800_example_atlases_20260729_Slot3/
+└── 160230_example_atlases_20260729_Slot3/
     └── Images-Disc1/GridSquare_.../
 ```
 
-Select `160800_example_atlases_20260729` as the Atlas Directory. The associated
+Select `160230_example_atlases_20260729` as the Atlas Directory. The associated
 slot folders are found automatically.
 
 ## Naming profiles

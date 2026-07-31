@@ -138,9 +138,10 @@ def test_parses_data_shifts_and_marks_field_of_view(tmp_path: Path) -> None:
 
 
 def test_supplied_session_coordinate_mapping_when_available() -> None:
-    atlas = Path(
-        "example-screening-session/160800_CL_apoSK04_SS_atlases_20260729"
-    )
+    example_root = Path("example-screening-session")
+    atlas = next(example_root.glob("*_CL_apoSK04_SS_atlases_20260729"), None)
+    if atlas is None:
+        pytest.skip("Supplied example screening session is not available.")
     if not atlas.is_dir():
         pytest.skip("Supplied example screening session is not available.")
     grid = discover_grid_folders(atlas)[0]
