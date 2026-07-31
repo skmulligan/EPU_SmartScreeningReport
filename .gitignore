@@ -48,3 +48,4 @@ tmp/
 # macOS metadata
 .DS_Store
 Launch_ScreeningReport.bat
+ScreeningReport.code-workspace
