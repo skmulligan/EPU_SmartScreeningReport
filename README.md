@@ -113,24 +113,30 @@ planned as the next rollout stage.
 
 Python 3.10 or newer is recommended.
 
-On the microscope Windows PC, double-click `Launch_ScreeningReport.bat`. The
-launcher uses the existing virtual environment at
-`C:\Users\supervisor.GLACIOS-9961023\Documents\sean\.venv`. A command window
-remains open while the GUI runs and displays any startup error instead of
-closing silently. The launcher recognizes the project and an optional `.venv`
-inside `C:\Users\supervisor.GLACIOS-9961023\Documents\sean\SmartScreeningReport`.
+Open PowerShell, change to the downloaded project directory, and create a
+virtual environment. Replace the example path with the location of your copy:
+
+```powershell
+cd C:\path\to\ScreeningReport
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+Start the application from the same PowerShell window:
+
+```powershell
+.\.venv\Scripts\python.exe -m screening_report
+```
+
+For later launches, return to the project directory and run only the final
+command. Calling the virtual environment's Python executable directly avoids
+PowerShell activation-policy issues. If the Python launcher (`py`) is not
+installed, use `python -m venv .venv` instead.
 
 When updating the microscope installation, replace the complete
 `screening_report` package directory rather than copying individual `.py`
 files. The modules are versioned together, and a partial copy can produce
 missing-module or incompatible-model errors.
-
-Alternatively, run it manually:
-
-```powershell
-python -m pip install -r requirements.txt
-python -m screening_report
-```
 
 For development in this repository:
 
