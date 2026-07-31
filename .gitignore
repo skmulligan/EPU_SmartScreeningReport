@@ -33,6 +33,7 @@ tmp/
 # Local screening-session data (large microscope images and metadata)
 /example-screening-session/
 /screening_session_tree.txt
+/SERIALEM_IMPROVEMENT_IDEAS.md
 
 # IDE and editor files
 .idea/

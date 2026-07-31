@@ -6,6 +6,7 @@ screening sessions collected with EPU.
 The application provides:
 
 - A Tkinter desktop interface.
+- Independent EPU and SerialEM report modes.
 - Atlas session selection with a native directory browser.
 - Automatic discovery of sibling grid folders ending in `_Slot1` through
   `_Slot12`.
@@ -26,6 +27,37 @@ The application provides:
 GridSquares are ordered by acquisition time. GridSquare directories without a
 primary JPG remain visible in the slot summary and are skipped in the detailed
 pages.
+
+## SerialEM screening mode
+
+Choose **SerialEM** at the top of the application to build a report from
+display-ready images that do not have EPU metadata or consistent names. Select
+the SerialEM session root and ScreeningReport recursively scans JPG, JPEG, PNG,
+and TIFF files. The original files are never changed.
+
+The importer suggests a slot and one of four report roles from filename hints:
+primary overview, supplemental overview, square, or record. Deterministic,
+readable assignments are confirmed automatically. Ambiguous or conflicting
+assignments remain unchecked and are highlighted in the table; **Review Next**
+moves directly through those rows. A review-only view and slot, role, and
+filename filters keep large sessions manageable. With the table focused, use
+`A` or Enter to accept, `X` or Delete to exclude, and `P`/`N` or the arrow keys
+to move backward and forward through the filtered review queue. Use the preview
+and assignment editor to correct the slot, role, square ID, and ordering. Files
+that do not belong in the report can be explicitly excluded. Slots may contain
+only an overview, and records may be assigned to a square even when no square
+image is available.
+
+SerialEM reports contain a session summary, slot overview pages, supplemental
+overview pages, and square sections with their record images. Project, session,
+slot-label, and slot-note fields are editable. EPU-only metadata, coordinate
+overlays, and FFT pages are intentionally omitted.
+
+By default the application writes a reusable `<report>.serialem.json` mapping
+beside the PDF. Load that mapping later to regenerate the report without
+reclassifying every file. Relative image paths are preserved for files under
+the session root, and missing or relocated files are returned to review status.
+Raw MRC display is not supported in SerialEM mode in this release.
 
 ## Default naming convention
 

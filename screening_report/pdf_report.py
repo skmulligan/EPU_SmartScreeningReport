@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import tempfile
 import textwrap
+import warnings
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -128,16 +129,24 @@ def _draw_fitted_image(
     border: bool = False,
 ) -> None:
     if isinstance(source, Path):
-        with PILImage.open(source) as opened:
-            prepared = opened.convert("RGB")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", PILImage.DecompressionBombWarning)
+            with PILImage.open(source) as opened:
+                opened.seek(0)
+                opened.draft("RGB", maximum_pixels := (
+                    max(1, ceil(width * image_profile.dpi / 72)),
+                    max(1, ceil(height * image_profile.dpi / 72)),
+                ))
+                prepared = opened.convert("RGB")
     else:
         prepared = source.convert("RGB")
 
     source_width, source_height = prepared.size
-    maximum_pixels = (
-        max(1, ceil(width * image_profile.dpi / 72)),
-        max(1, ceil(height * image_profile.dpi / 72)),
-    )
+    if not isinstance(source, Path):
+        maximum_pixels = (
+            max(1, ceil(width * image_profile.dpi / 72)),
+            max(1, ceil(height * image_profile.dpi / 72)),
+        )
     prepared.thumbnail(maximum_pixels, PILImage.Resampling.LANCZOS)
     encoded = BytesIO()
     prepared.save(
