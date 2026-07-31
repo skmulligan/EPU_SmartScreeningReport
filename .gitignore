@@ -23,6 +23,7 @@ htmlcov/
 # Build and packaging outputs
 build/
 dist/
+assets/
 *.egg-info/
 .eggs/
 

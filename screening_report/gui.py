@@ -51,6 +51,8 @@ class ScreeningReportApp:
         self.grids: list[GridFolder] = []
         self.serialem_session: SerialEMSession | None = None
         self._preview_photo: ImageTk.PhotoImage | None = None
+        self._preview_assignment: SerialEMImageAssignment | None = None
+        self._preview_resize_job: str | None = None
 
         self.mode_var = tk.StringVar(value="EPU")
         self.atlas_path_var = tk.StringVar()
@@ -270,8 +272,8 @@ class ScreeningReportApp:
         pane.grid(row=2, column=0, sticky="nsew", pady=(9, 0))
         table_frame = ttk.LabelFrame(pane, text="Image Assignments", padding=7)
         editor_frame = ttk.LabelFrame(pane, text="Preview and Assignment", padding=8)
-        pane.add(table_frame, weight=3)
-        pane.add(editor_frame, weight=2)
+        pane.add(table_frame, weight=2)
+        pane.add(editor_frame, weight=3)
         table_frame.columnconfigure(0, weight=1)
         table_frame.rowconfigure(2, weight=1)
 
@@ -372,6 +374,32 @@ class ScreeningReportApp:
             style="Subtitle.TLabel",
         ).grid(row=1, column=0, columnspan=6, sticky="w", pady=(5, 0))
 
+        slot_details = ttk.LabelFrame(table_frame, text="Selected Slot Details", padding=6)
+        slot_details.grid(
+            row=4,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            pady=(8, 0),
+        )
+        slot_details.columnconfigure(1, weight=1)
+        ttk.Label(slot_details, text="Grid ID").grid(row=0, column=0, sticky="w")
+        ttk.Entry(slot_details, textvariable=self.serialem_slot_label_var).grid(
+            row=0, column=1, sticky="ew", padx=(6, 0)
+        )
+        ttk.Label(slot_details, text="Notes").grid(
+            row=1, column=0, sticky="nw", pady=(5, 0)
+        )
+        self.serialem_slot_notes = tk.Text(slot_details, height=2, wrap="word")
+        self.serialem_slot_notes.grid(
+            row=1, column=1, sticky="ew", padx=(6, 0), pady=(5, 0)
+        )
+        ttk.Button(
+            slot_details,
+            text="Save Slot Details",
+            command=self.apply_serialem_slot_details,
+        ).grid(row=2, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+
         editor_frame.columnconfigure(0, weight=1)
         self.preview_label = ttk.Label(
             editor_frame,
@@ -380,6 +408,7 @@ class ScreeningReportApp:
             relief="sunken",
         )
         self.preview_label.grid(row=0, column=0, sticky="nsew")
+        self.preview_label.bind("<Configure>", self._schedule_preview_resize)
         editor_frame.rowconfigure(0, weight=1)
         fields = ttk.Frame(editor_frame)
         fields.grid(row=1, column=0, sticky="ew", pady=(8, 0))
@@ -412,20 +441,6 @@ class ScreeningReportApp:
         ).grid(row=4, column=0, columnspan=2, sticky="w", pady=(5, 0))
         ttk.Button(fields, text="Apply to Selected", command=self.apply_serialem_editor).grid(
             row=5, column=0, columnspan=2, sticky="ew", pady=(7, 0)
-        )
-
-        slot_details = ttk.LabelFrame(editor_frame, text="Selected Slot Details", padding=6)
-        slot_details.grid(row=2, column=0, sticky="ew", pady=(8, 0))
-        slot_details.columnconfigure(1, weight=1)
-        ttk.Label(slot_details, text="Label").grid(row=0, column=0, sticky="w")
-        ttk.Entry(slot_details, textvariable=self.serialem_slot_label_var).grid(
-            row=0, column=1, sticky="ew", padx=(6, 0)
-        )
-        ttk.Label(slot_details, text="Notes").grid(row=1, column=0, sticky="nw", pady=(5, 0))
-        self.serialem_slot_notes = tk.Text(slot_details, height=3, wrap="word")
-        self.serialem_slot_notes.grid(row=1, column=1, sticky="ew", padx=(6, 0), pady=(5, 0))
-        ttk.Button(slot_details, text="Save Slot Details", command=self.apply_serialem_slot_details).grid(
-            row=2, column=0, columnspan=2, sticky="ew", pady=(6, 0)
         )
 
     def _mode_changed(self) -> None:
@@ -702,15 +717,46 @@ class ScreeningReportApp:
         self._show_serialem_preview(assignment)
 
     def _show_serialem_preview(self, assignment: SerialEMImageAssignment) -> None:
+        self._preview_assignment = assignment
+        self._render_serialem_preview()
+
+    def _schedule_preview_resize(self, _event: object | None = None) -> None:
+        """Debounce preview regeneration while the window is being resized."""
+
+        if self._preview_assignment is None:
+            return
+        if self._preview_resize_job is not None:
+            try:
+                self.root.after_cancel(self._preview_resize_job)
+            except tk.TclError:
+                pass
+        self._preview_resize_job = self.root.after(120, self._render_serialem_preview)
+
+    def _render_serialem_preview(self) -> None:
+        """Render the selected image to the preview panel's current dimensions."""
+
+        self._preview_resize_job = None
+        assignment = self._preview_assignment
+        if assignment is None:
+            return
+        available_width = self.preview_label.winfo_width()
+        available_height = self.preview_label.winfo_height()
+        if available_width <= 10 or available_height <= 10:
+            target_size = (680, 480)
+        else:
+            target_size = (
+                max(100, available_width - 20),
+                max(100, available_height - 70),
+            )
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", Image.DecompressionBombWarning)
                 with Image.open(assignment.path) as opened:
                     opened.seek(0)
                     original_size = opened.size
-                    opened.draft("RGB", (440, 340))
+                    opened.draft("RGB", target_size)
                     preview = opened.convert("RGB")
-            preview.thumbnail((440, 340), Image.Resampling.LANCZOS)
+            preview.thumbnail(target_size, Image.Resampling.LANCZOS)
             self._preview_photo = ImageTk.PhotoImage(preview)
             self.preview_label.configure(
                 image=self._preview_photo,

@@ -86,7 +86,7 @@ def _draw_cover(
     pdf.rect(margin, y - 19, width - 2 * margin, 22, fill=1, stroke=0)
     pdf.setFillColor(colors.white)
     pdf.setFont("Helvetica-Bold", 8)
-    for x, label in zip(columns, ("Slot", "Label", "Overviews", "Squares", "Records")):
+    for x, label in zip(columns, ("Slot", "Grid ID", "Overviews", "Squares", "Records")):
         pdf.drawString(x + 4, y - 11, label)
     y -= 22
     for index, slot in enumerate(slots):

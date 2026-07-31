@@ -45,6 +45,7 @@ def test_generates_adapted_serialem_report_with_partial_square(tmp_path: Path) -
         assert pdf.pages[0].width < pdf.pages[0].height
         assert any(page.width > page.height for page in pdf.pages)
     assert "160230 SerialEM Visual Report" in text
+    assert "Grid ID" in text
     assert "Grid A" in text
     assert "Supplemental overview 1" in text
     assert "Square 1" in text

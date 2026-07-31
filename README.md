@@ -50,7 +50,7 @@ image is available.
 
 SerialEM reports contain a session summary, slot overview pages, supplemental
 overview pages, and square sections with their record images. Project, session,
-slot-label, and slot-note fields are editable. EPU-only metadata, coordinate
+Grid ID, and slot-note fields are editable. EPU-only metadata, coordinate
 overlays, and FFT pages are intentionally omitted.
 
 By default the application writes a reusable `<report>.serialem.json` mapping
