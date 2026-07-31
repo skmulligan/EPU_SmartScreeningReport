@@ -27,6 +27,34 @@ GridSquares are ordered by acquisition time. GridSquare directories without a
 primary JPG remain visible in the slot summary and are skipped in the detailed
 pages.
 
+## Default naming convention
+
+The default naming profile expects the Atlas session directory to begin with a
+six-digit project number in the `160xxx` series. For example:
+
+```text
+160230_example_atlases_20260729
+```
+
+Each associated EPU Multigrid session must use that complete Atlas session name
+followed by `_SlotN`, where `N` is the autoloader slot number from 1 through 12:
+
+```text
+160230_example_atlases_20260729_Slot2
+160230_example_atlases_20260729_Slot3
+```
+
+The Atlas and `_SlotN` directories must be siblings in the same parent
+directory. When the Atlas directory is selected, ScreeningReport extracts the
+slot number from each matching suffix and associates slot `N` with the Atlas
+image under `SampleN/Atlas/Atlas_*.jpg`.
+
+SmartScreening with CryoFlow can supply this naming structure automatically. If
+you are not using SmartScreening with CryoFlow, create the EPU Multigrid
+sessions with the same Atlas session name and append `_SlotN` to each session.
+ScreeningReport will then find the sessions and pull their GridSquare, FoilHole,
+Data-image, and metadata information into the report.
+
 ## PDF image quality
 
 The GUI provides three image-quality choices. Compression applies only to the
