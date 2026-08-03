@@ -23,9 +23,11 @@ from .pdf_report import (
     SLATE,
     ImageQualityProfile,
     _draw_fitted_image,
+    _draw_logo,
     _draw_wrapped,
     _finish_page,
     _fit_text_width,
+    _themed_font,
 )
 from .serialem import (
     SerialEMSession,
@@ -34,6 +36,7 @@ from .serialem import (
     build_serialem_slots,
     validate_serialem_session,
 )
+from .theme import DEFAULT_REPORT_THEME, ReportCanvas, ReportTheme
 
 
 ProgressCallback = Callable[[str], None]
@@ -54,12 +57,22 @@ def _draw_cover(
     pdf.setPageSize(PORTRAIT)
     width, height = PORTRAIT
     margin = 48
+    theme = pdf.report_theme if isinstance(pdf, ReportCanvas) else DEFAULT_REPORT_THEME
+    title_width = width - 2 * margin
+    if theme.branding.logo is not None:
+        title_width -= 132
+        _draw_logo(pdf, theme.branding.logo, width - margin - 120, height - 80, 120, 48)
     pdf.setFillColor(NAVY)
     pdf.setFont("Helvetica-Bold", 23)
     pdf.drawString(
         margin,
         height - 70,
-        _fit_text_width(session.title, width - 2 * margin, font="Helvetica-Bold", size=23),
+        _fit_text_width(
+            session.title,
+            title_width,
+            font=_themed_font(pdf, "Helvetica-Bold", 23),
+            size=23,
+        ),
     )
     pdf.setFillColor(SLATE)
     pdf.setFont("Helvetica", 10)
@@ -109,7 +122,12 @@ def _draw_cover(
             pdf.drawString(
                 x + 4,
                 y - 14,
-                _fit_text_width(value, available, font="Helvetica", size=8),
+                _fit_text_width(
+                    value,
+                    available,
+                    font=_themed_font(pdf, "Helvetica", 8),
+                    size=8,
+                ),
             )
         pdf.setStrokeColor(LIGHT_SLATE)
         pdf.line(margin, y - 22, width - margin, y - 22)
@@ -152,7 +170,16 @@ def _draw_overview_page(
         title += " — Primary overview"
     pdf.setFillColor(NAVY)
     pdf.setFont("Helvetica-Bold", 19)
-    pdf.drawString(48, height - 60, _fit_text_width(title, width - 96, font="Helvetica-Bold", size=19))
+    pdf.drawString(
+        48,
+        height - 60,
+        _fit_text_width(
+            title,
+            width - 96,
+            font=_themed_font(pdf, "Helvetica-Bold", 19),
+            size=19,
+        ),
+    )
     if slot.notes and supplemental_index is None:
         _draw_wrapped(pdf, slot.notes, 48, height - 82, width_chars=90, size=8, max_lines=3)
     image_y = 80
@@ -173,7 +200,12 @@ def _draw_overview_page(
         pdf.drawCentredString(
             width / 2,
             58,
-            _fit_text_width(path.name, width - 96, font="Helvetica", size=8),
+            _fit_text_width(
+                path.name,
+                width - 96,
+                font=_themed_font(pdf, "Helvetica", 8),
+                size=8,
+            ),
         )
     else:
         _draw_placeholder(pdf, 70, 235, width - 140, 250, "No primary overview selected")
@@ -204,7 +236,12 @@ def _draw_record(
     pdf.drawCentredString(
         x + width / 2,
         y + 3,
-        _fit_text_width(path.name, width, font="Helvetica", size=7),
+        _fit_text_width(
+            path.name,
+            width,
+            font=_themed_font(pdf, "Helvetica", 7),
+            size=7,
+        ),
     )
 
 
@@ -245,7 +282,12 @@ def _draw_square_pages(
             pdf.drawCentredString(
                 left_x + left_w / 2,
                 left_y + 4,
-                _fit_text_width(square.image.path.name, left_w, font="Helvetica", size=7),
+                _fit_text_width(
+                    square.image.path.name,
+                    left_w,
+                    font=_themed_font(pdf, "Helvetica", 7),
+                    size=7,
+                ),
             )
         elif page_index == 1:
             _draw_placeholder(pdf, left_x, left_y + 65, left_w, 230, "Square image not available")
@@ -284,6 +326,7 @@ def generate_serialem_report(
     generated_at: datetime | None = None,
     progress_callback: ProgressCallback | None = None,
     image_quality: str = DEFAULT_IMAGE_QUALITY,
+    theme: ReportTheme | None = None,
 ) -> Path:
     """Generate a report from a fully confirmed SerialEM mapping."""
 
@@ -303,7 +346,12 @@ def generate_serialem_report(
     os.close(descriptor)
     temporary = Path(temporary_name)
     try:
-        pdf = canvas.Canvas(str(temporary), pagesize=PORTRAIT, pageCompression=1)
+        pdf = ReportCanvas(
+            str(temporary),
+            pagesize=PORTRAIT,
+            pageCompression=1,
+            theme=theme,
+        )
         pdf.setTitle(session.title)
         pdf.setAuthor("CryoEM Screening Report")
         _draw_cover(pdf, session, slots, generated_at or datetime.now())

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from screening_report.discovery import discover_grid_folders
 from screening_report.models import (
@@ -13,6 +13,8 @@ from screening_report.overlays import (
     choose_pixel_center_transform,
     parse_atlas_positions,
     parse_data_area_shifts,
+    parse_dm_refined_target_positions,
+    register_pixel_centers_to_foil,
     render_atlas_overlay,
     render_data_overlay,
     render_grid_square_overlay,
@@ -137,6 +139,55 @@ def test_parses_data_shifts_and_marks_field_of_view(tmp_path: Path) -> None:
     assert result.warning is None
 
 
+def test_parses_refined_target_stage_position_and_flags(tmp_path: Path) -> None:
+    metadata = tmp_path / "GridSquare_10.dm"
+    metadata.write_text(
+        """
+        <Root>
+          <KeyValuePairOfintTargetLocationXml>
+            <key>20</key>
+            <value>
+              <CorrectedStagePosition><X>9</X><Y>8</Y></CorrectedStagePosition>
+              <IsPositionCorrected>true</IsPositionCorrected>
+              <IsPositionRefined>true</IsPositionRefined>
+              <StagePosition><X>1.25e-6</X><Y>-2.5e-6</Y></StagePosition>
+            </value>
+          </KeyValuePairOfintTargetLocationXml>
+        </Root>
+        """,
+        encoding="utf-8",
+    )
+
+    targets = parse_dm_refined_target_positions(metadata)
+
+    assert targets["20"].stage_x == pytest.approx(1.25e-6)
+    assert targets["20"].stage_y == pytest.approx(-2.5e-6)
+    assert targets["20"].is_corrected
+    assert targets["20"].is_refined
+
+
+def test_registers_complete_hole_cloud_to_visible_foil_center() -> None:
+    image = Image.new("L", (100, 100), 0)
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((28, 28, 72, 72), fill=100)
+    coordinates = {
+        str(index): (70.0 + index % 3 * 5, 20.0 + index // 3 * 5, True)
+        for index in range(9)
+    }
+    for x, y, _ in coordinates.values():
+        draw.ellipse((x - 27, y + 23, x - 23, y + 27), fill=220)
+
+    registered, offset = register_pixel_centers_to_foil(
+        image.convert("RGB"),
+        coordinates,
+    )
+
+    assert offset is not None
+    assert offset[0] == pytest.approx(-25.0, abs=2.0)
+    assert offset[1] == pytest.approx(25.0, abs=2.0)
+    assert len(registered) == len(coordinates)
+
+
 def test_supplied_session_coordinate_mapping_when_available() -> None:
     example_root = Path("example-screening-session")
     atlas = next(example_root.glob("*_CL_apoSK04_SS_atlases_20260729"), None)
@@ -167,3 +218,14 @@ def test_supplied_session_coordinate_mapping_when_available() -> None:
         overlay = render_grid_square_overlay(square, grid.path / "Metadata")
         assert len(overlay.markers) == 4
         assert all(marker.in_bounds for marker in overlay.markers)
+        assert all(marker.detected_x is not None for marker in overlay.markers)
+        assert all(marker.refined_x is not None for marker in overlay.markers)
+        assert any(
+            abs(marker.detected_x - marker.refined_x) > 1
+            or abs(marker.detected_y - marker.refined_y) > 1
+            for marker in overlay.markers
+            if marker.detected_x is not None
+            and marker.detected_y is not None
+            and marker.refined_x is not None
+            and marker.refined_y is not None
+        )

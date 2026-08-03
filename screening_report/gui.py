@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import queue
+import subprocess
+import sys
 import threading
 import tkinter as tk
 import warnings
@@ -33,6 +36,15 @@ from .serialem import (
     validate_serialem_session,
 )
 from .serialem_pdf_report import generate_serialem_report
+from .theme import (
+    DEFAULT_REPORT_THEME,
+    ReportTheme,
+    ThemeError,
+    discover_report_themes,
+    ensure_user_theme_directory,
+    load_report_theme,
+    user_theme_directory,
+)
 
 
 class ScreeningReportApp:
@@ -53,6 +65,16 @@ class ScreeningReportApp:
         self._preview_photo: ImageTk.PhotoImage | None = None
         self._preview_assignment: SerialEMImageAssignment | None = None
         self._preview_resize_job: str | None = None
+        self.theme_directory = user_theme_directory()
+        self._theme_directory_error: str | None = None
+        try:
+            ensure_user_theme_directory(self.theme_directory)
+        except OSError as exc:
+            self._theme_directory_error = str(exc)
+        self._themes_by_label: dict[str, ReportTheme] = {
+            "Default": DEFAULT_REPORT_THEME
+        }
+        self._browsed_theme: tuple[str, ReportTheme] | None = None
 
         self.mode_var = tk.StringVar(value="EPU")
         self.atlas_path_var = tk.StringVar()
@@ -74,6 +96,7 @@ class ScreeningReportApp:
         self.image_quality_var = tk.StringVar(
             value=IMAGE_QUALITY_PROFILES[DEFAULT_IMAGE_QUALITY].label
         )
+        self.theme_var = tk.StringVar(value="Default")
         self.include_fft_var = tk.BooleanVar(value=False)
         self.status_var = tk.StringVar(
             value="Select an EPU atlas session directory to find associated grid folders."
@@ -181,6 +204,35 @@ class ScreeningReportApp:
             text="Save reusable SerialEM mapping",
             variable=self.save_manifest_var,
         )
+        theme_frame = ttk.Frame(footer)
+        theme_frame.grid(
+            row=1,
+            column=1,
+            columnspan=2,
+            sticky="e",
+            pady=(7, 0),
+        )
+        ttk.Label(theme_frame, text="Report theme:").grid(
+            row=0, column=0, padx=(0, 6)
+        )
+        self.theme_combobox = ttk.Combobox(
+            theme_frame,
+            textvariable=self.theme_var,
+            values=("Default",),
+            state="readonly",
+            width=28,
+            postcommand=self._refresh_theme_choices,
+        )
+        self.theme_combobox.grid(row=0, column=1, sticky="ew")
+        ttk.Button(theme_frame, text="Browse…", command=self.browse_for_theme).grid(
+            row=0, column=2, sticky="ew", padx=(5, 4)
+        )
+        ttk.Button(
+            theme_frame,
+            text="Open Themes Folder…",
+            command=self.open_themes_folder,
+        ).grid(row=0, column=3, sticky="ew")
+        self._refresh_theme_choices()
         self.generate_button = ttk.Button(
             footer,
             text="Generate PDF Report...",
@@ -915,6 +967,73 @@ class ScreeningReportApp:
             if profile.label == self.image_quality_var.get()
         )
 
+    def _refresh_theme_choices(self) -> None:
+        themes: dict[str, ReportTheme] = {"Default": DEFAULT_REPORT_THEME}
+        try:
+            discovery = discover_report_themes(self.theme_directory)
+        except OSError as exc:
+            self._theme_directory_error = str(exc)
+            discovery = None
+        if discovery is not None:
+            for entry in discovery.themes:
+                themes[entry.label] = entry.theme
+            if discovery.errors:
+                filenames = ", ".join(path.name for path, _error in discovery.errors)
+                self.status_var.set(f"Ignored invalid theme file(s): {filenames}")
+        if self._browsed_theme is not None:
+            label, browsed = self._browsed_theme
+            themes[label] = browsed
+        self._themes_by_label = themes
+        self.theme_combobox.configure(values=tuple(themes))
+        if self.theme_var.get() not in themes:
+            self.theme_var.set("Default")
+        if self._theme_directory_error:
+            self.status_var.set(
+                f"Could not initialize the themes folder: {self._theme_directory_error}"
+            )
+
+    def _selected_report_theme(self) -> ReportTheme:
+        return self._themes_by_label.get(self.theme_var.get(), DEFAULT_REPORT_THEME)
+
+    def browse_for_theme(self) -> None:
+        selected = filedialog.askopenfilename(
+            parent=self.root,
+            title="Select report theme",
+            initialdir=str(self.theme_directory),
+            filetypes=[("JSON theme files", "*.json"), ("All files", "*.*")],
+        )
+        if not selected:
+            return
+        path = Path(selected)
+        try:
+            theme = load_report_theme(path)
+        except ThemeError as exc:
+            messagebox.showerror("Invalid report theme", str(exc), parent=self.root)
+            return
+        label = f"{theme.name} ({path.name})"
+        self._browsed_theme = label, theme
+        self._refresh_theme_choices()
+        self.theme_var.set(label)
+        self.status_var.set(f"Loaded report theme: {theme.name}")
+
+    def open_themes_folder(self) -> None:
+        try:
+            directory = ensure_user_theme_directory(self.theme_directory)
+            self._theme_directory_error = None
+            self._refresh_theme_choices()
+            if sys.platform == "win32":
+                getattr(os, "startfile")(str(directory))
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(directory)])
+            else:
+                subprocess.Popen(["xdg-open", str(directory)])
+        except (OSError, subprocess.SubprocessError) as exc:
+            messagebox.showerror(
+                "Could not open themes folder",
+                f"{self.theme_directory}\n\n{exc}",
+                parent=self.root,
+            )
+
     def choose_report_output(self) -> None:
         if self.mode_var.get() == "SerialEM":
             self._choose_serialem_report_output()
@@ -993,6 +1112,7 @@ class ScreeningReportApp:
         grids = list(self.grids)
         quality = self._quality_key()
         include_fft = self.include_fft_var.get()
+        theme = self._selected_report_theme()
 
         def worker(result_queue: queue.Queue[tuple[str, object]]) -> Path:
             return generate_screening_report(
@@ -1002,6 +1122,7 @@ class ScreeningReportApp:
                 image_quality=quality,
                 include_fft=include_fft,
                 naming_profile=self.naming_profile,
+                theme=theme,
                 progress_callback=lambda message: result_queue.put(("progress", message)),
             )
 
@@ -1010,12 +1131,14 @@ class ScreeningReportApp:
     def _generate_serialem_report(self, output_path: Path, session: SerialEMSession) -> None:
         quality = self._quality_key()
         save_manifest = self.save_manifest_var.get()
+        theme = self._selected_report_theme()
 
         def worker(result_queue: queue.Queue[tuple[str, object]]) -> Path:
             result = generate_serialem_report(
                 output_path,
                 session,
                 image_quality=quality,
+                theme=theme,
                 progress_callback=lambda message: result_queue.put(("progress", message)),
             )
             if save_manifest:

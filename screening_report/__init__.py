@@ -22,6 +22,12 @@ from .serialem import (
     validate_serialem_session,
 )
 from .serialem_pdf_report import generate_serialem_report
+from .theme import (
+    DEFAULT_REPORT_THEME,
+    ReportTheme,
+    ThemeError,
+    load_report_theme,
+)
 
 __all__ = [
     "AcquisitionMetadata",
@@ -39,7 +45,11 @@ __all__ = [
     "SerialEMSlotDetails",
     "SerialEMSquare",
     "DEFAULT_NAMING_PROFILE",
+    "DEFAULT_REPORT_THEME",
+    "ReportTheme",
+    "ThemeError",
     "load_serialem_manifest",
+    "load_report_theme",
     "save_serialem_manifest",
     "scan_serialem_session",
     "generate_serialem_report",

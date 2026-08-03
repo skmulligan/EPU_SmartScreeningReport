@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "name": "Current Look",
+  "colors": {
+    "primary": "#17324D",
+    "text": "#000000",
+    "secondary_text": "#475569",
+    "muted_text": "#64748B",
+    "border": "#E2E8F0",
+    "surface": "#F8FAFC",
+    "subtle_surface": "#F1F5F9",
+    "accent": "#C2410C",
+    "accent_surface": "#FFF7ED",
+    "accent_border": "#FED7AA",
+    "inverse_text": "#FFFFFF",
+    "success": "#22C55E",
+    "inactive": "#94A3B8",
+    "dark_surface": "#0F172A",
+    "dark_surface_text": "#CBD5E1"
+  },
+  "fonts": {
+    "heading": "Helvetica-Bold",
+    "body": "Helvetica",
+    "bold": "Helvetica-Bold",
+    "italic": "Helvetica-Oblique"
+  },
+  "branding": {
+    "logo": null,
+    "footer_text": null
+  }
+}

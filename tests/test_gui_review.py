@@ -1,7 +1,9 @@
+import json
 from pathlib import Path
 
 from screening_report.gui import ScreeningReportApp
 from screening_report.serialem import SerialEMImageAssignment, SerialEMImageRole
+from screening_report.theme import bundled_default_theme_path
 
 
 class _Value:
@@ -10,6 +12,17 @@ class _Value:
 
     def get(self) -> object:
         return self.value
+
+    def set(self, value: object) -> None:
+        self.value = value
+
+
+class _Combo:
+    def __init__(self) -> None:
+        self.values: tuple[str, ...] = ()
+
+    def configure(self, *, values: tuple[str, ...]) -> None:
+        self.values = values
 
 
 class _Root:
@@ -78,3 +91,41 @@ def test_review_filters_combine_slot_role_filename_and_review_state() -> None:
     assignment.confirmed = False
     app.serialem_filter_slot_var.value = "3"
     assert not app._serialem_assignment_is_visible(assignment)
+
+
+def test_refresh_theme_choices_discovers_valid_and_reports_invalid(tmp_path: Path) -> None:
+    payload = json.loads(bundled_default_theme_path().read_text(encoding="utf-8"))
+    payload["name"] = "Facility Blue"
+    (tmp_path / "facility.json").write_text(json.dumps(payload), encoding="utf-8")
+    (tmp_path / "broken.json").write_text("{", encoding="utf-8")
+    app = object.__new__(ScreeningReportApp)
+    app.theme_directory = tmp_path
+    app._theme_directory_error = None
+    app._browsed_theme = None
+    app.theme_var = _Value("Default")
+    app.status_var = _Value("")
+    app.theme_combobox = _Combo()
+
+    app._refresh_theme_choices()
+
+    assert app.theme_combobox.values == ("Default", "Facility Blue (facility.json)")
+    assert app.theme_var.get() == "Default"
+    assert app._selected_report_theme().name == "Current Look"
+    assert app.status_var.get() == "Ignored invalid theme file(s): broken.json"
+
+
+def test_refresh_theme_choices_keeps_browsed_theme_selected(tmp_path: Path) -> None:
+    from screening_report.theme import DEFAULT_REPORT_THEME
+
+    app = object.__new__(ScreeningReportApp)
+    app.theme_directory = tmp_path
+    app._theme_directory_error = None
+    app._browsed_theme = ("Browsed (elsewhere.json)", DEFAULT_REPORT_THEME)
+    app.theme_var = _Value("Browsed (elsewhere.json)")
+    app.status_var = _Value("")
+    app.theme_combobox = _Combo()
+
+    app._refresh_theme_choices()
+
+    assert app.theme_combobox.values == ("Default", "Browsed (elsewhere.json)")
+    assert app._selected_report_theme() is DEFAULT_REPORT_THEME

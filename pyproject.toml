@@ -18,6 +18,12 @@ dependencies = [
 [project.gui-scripts]
 screening-report = "screening_report.gui:main"
 
+[tool.setuptools.package-data]
+screening_report = ["themes/*.json"]
+
+[tool.setuptools.packages.find]
+include = ["screening_report*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

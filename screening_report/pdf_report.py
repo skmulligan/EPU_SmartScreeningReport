@@ -13,7 +13,7 @@ from io import BytesIO
 from math import ceil
 from pathlib import Path
 
-from PIL import Image as PILImage
+from PIL import Image as PILImage, ImageOps
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import landscape, letter
 from reportlab.lib.utils import ImageReader
@@ -40,6 +40,7 @@ from .overlays import (
     render_grid_square_overlay,
 )
 from .session_content import discover_session_content
+from .theme import DEFAULT_REPORT_THEME, ReportCanvas, ReportTheme
 
 ProgressCallback = Callable[[str], None]
 PORTRAIT = letter
@@ -103,12 +104,81 @@ def _fit_text_width(
     return placeholder
 
 
+def _themed_font(pdf: canvas.Canvas, legacy_font: str, size: float) -> str:
+    if isinstance(pdf, ReportCanvas):
+        return pdf.themed_font(legacy_font, size)
+    return legacy_font
+
+
+def _set_marker_fill_color(pdf: canvas.Canvas, value) -> None:
+    if isinstance(pdf, ReportCanvas):
+        pdf.set_marker_fill_color(value)
+    else:
+        pdf.setFillColor(value)
+
+
+def _set_marker_stroke_color(pdf: canvas.Canvas, value) -> None:
+    if isinstance(pdf, ReportCanvas):
+        pdf.set_marker_stroke_color(value)
+    else:
+        pdf.setStrokeColor(value)
+
+
+def _draw_logo(
+    pdf: canvas.Canvas,
+    path: Path,
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+) -> None:
+    """Draw a PNG/JPEG logo inside a bounding box while preserving alpha."""
+
+    with PILImage.open(path) as opened:
+        prepared = ImageOps.exif_transpose(opened)
+        prepared = prepared.convert("RGBA" if "A" in prepared.getbands() else "RGB")
+        source_width, source_height = prepared.size
+        encoded = BytesIO()
+        prepared.save(encoded, format="PNG")
+    encoded.seek(0)
+    scale = min(width / source_width, height / source_height)
+    drawn_width = source_width * scale
+    drawn_height = source_height * scale
+    pdf.drawImage(
+        ImageReader(encoded),
+        x + (width - drawn_width) / 2,
+        y + (height - drawn_height) / 2,
+        width=drawn_width,
+        height=drawn_height,
+        preserveAspectRatio=True,
+        mask="auto",
+    )
+
+
 def _draw_footer(pdf: canvas.Canvas, page_size: tuple[float, float]) -> None:
     width, _ = page_size
+    theme = pdf.report_theme if isinstance(pdf, ReportCanvas) else DEFAULT_REPORT_THEME
     pdf.saveState()
     pdf.setFillColor(colors.HexColor("#64748B"))
     pdf.setFont("Helvetica", 8)
-    pdf.drawCentredString(width / 2, 18, f"Page {pdf.getPageNumber()}")
+    page_label = f"Page {pdf.getPageNumber()}"
+    if theme.branding.logo is None and theme.branding.footer_text is None:
+        pdf.drawCentredString(width / 2, 18, page_label)
+    else:
+        if theme.branding.logo is not None:
+            _draw_logo(pdf, theme.branding.logo, 24, 10, 36, 14)
+        if theme.branding.footer_text:
+            pdf.drawCentredString(
+                width / 2,
+                18,
+                _fit_text_width(
+                    theme.branding.footer_text,
+                    width - 180,
+                    font=_themed_font(pdf, "Helvetica", 8),
+                    size=8,
+                ),
+            )
+        pdf.drawRightString(width - 24, 18, page_label)
     pdf.restoreState()
 
 
@@ -332,7 +402,7 @@ def _draw_configuration_card(
             _fit_text_width(
                 text,
                 available_width,
-                font="Helvetica",
+                font=_themed_font(pdf, "Helvetica", 7),
                 size=7,
             ),
         )
@@ -348,9 +418,24 @@ def _draw_cover(
     pdf.setPageSize(PORTRAIT)
     width, height = PORTRAIT
     margin = 48
+    theme = pdf.report_theme if isinstance(pdf, ReportCanvas) else DEFAULT_REPORT_THEME
+    title = f"{contents[0].grid.project_number} Screening Report"
+    title_width = width - 2 * margin
+    if theme.branding.logo is not None:
+        title_width -= 132
+        _draw_logo(pdf, theme.branding.logo, width - margin - 120, height - 80, 120, 48)
     pdf.setFillColor(NAVY)
     pdf.setFont("Helvetica-Bold", 25)
-    pdf.drawString(margin, height - 72, f"{contents[0].grid.project_number} Screening Report")
+    pdf.drawString(
+        margin,
+        height - 72,
+        _fit_text_width(
+            title,
+            title_width,
+            font=_themed_font(pdf, "Helvetica-Bold", 25),
+            size=25,
+        ),
+    )
     pdf.setFillColor(SLATE)
     pdf.setFont("Helvetica", 10)
     pdf.drawString(margin, height - 96, f"Atlas session: {atlas_root.name}")
@@ -394,7 +479,7 @@ def _draw_cover(
             _fit_text_width(
                 content.grid.name,
                 column_x[2] - column_x[1] - 8,
-                font="Helvetica",
+                font=_themed_font(pdf, "Helvetica", 7),
                 size=7,
             ),
         )
@@ -486,7 +571,7 @@ def _draw_grid_summary_rows(
                 _fit_text_width(
                     value,
                     140,
-                    font="Helvetica",
+                    font=_themed_font(pdf, "Helvetica", 7),
                     size=7,
                 )
                 if offset == 24
@@ -640,7 +725,23 @@ def _draw_grid_overview_page(
     pdf.setFillColor(NAVY)
     pdf.setFont("Helvetica-Bold", 12)
     pdf.drawString(legend_x, legend_y, "Screened FoilHoles")
-    legend_y -= 22
+    legend_y -= 17
+    pdf.setStrokeColor(colors.HexColor("#F59E0B"))
+    pdf.setLineWidth(1.5)
+    pdf.rect(legend_x, legend_y - 3, 12, 12, fill=0, stroke=1)
+    pdf.line(legend_x, legend_y + 3, legend_x + 12, legend_y + 3)
+    pdf.line(legend_x + 6, legend_y - 3, legend_x + 6, legend_y + 9)
+    pdf.setFillColor(SLATE)
+    pdf.setFont("Helvetica", 7)
+    pdf.drawString(legend_x + 17, legend_y, "Image-registered position")
+    legend_y -= 14
+    pdf.setStrokeColor(colors.HexColor("#22C55E"))
+    pdf.circle(legend_x + 6, legend_y + 3, 5, fill=0, stroke=1)
+    pdf.line(legend_x + 1, legend_y + 3, legend_x + 11, legend_y + 3)
+    pdf.line(legend_x + 6, legend_y - 2, legend_x + 6, legend_y + 8)
+    pdf.setFillColor(SLATE)
+    pdf.drawString(legend_x + 17, legend_y, "Original metadata fallback")
+    legend_y -= 19
 
     marker_by_id = {marker.foil_id: marker for marker in overlay.markers}
     for foil in record.foil_holes[:18]:
@@ -711,10 +812,10 @@ def _draw_data_thumbnail(
         pdf.setFillColor(SLATE)
         pdf.setFont("Helvetica", 7)
         pdf.drawCentredString(x + size / 2, y + size / 2, "Image unavailable")
-    pdf.setStrokeColor(color)
+    _set_marker_stroke_color(pdf, color)
     pdf.setLineWidth(2)
     pdf.rect(x, y, size, size, fill=0, stroke=1)
-    pdf.setFillColor(color)
+    _set_marker_fill_color(pdf, color)
     pdf.circle(x + 9, y + size - 9, 8, fill=1, stroke=0)
     pdf.setFillColor(colors.white)
     pdf.setFont("Helvetica-Bold", 7)
@@ -752,7 +853,7 @@ def _draw_fitted_centered_text(
     *,
     max_width: float,
 ) -> None:
-    font = "Helvetica"
+    font = _themed_font(pdf, "Helvetica", 6)
     font_size = 6.0
     while (
         font_size > 4.5
@@ -1019,10 +1120,10 @@ def _draw_fft_thumbnail(
             unavailable_message,
         )
 
-    pdf.setStrokeColor(color)
+    _set_marker_stroke_color(pdf, color)
     pdf.setLineWidth(2)
     pdf.rect(x, y, size, size, fill=0, stroke=1)
-    pdf.setFillColor(color)
+    _set_marker_fill_color(pdf, color)
     pdf.circle(x + 9, y + size - 9, 8, fill=1, stroke=0)
     pdf.setFillColor(colors.white)
     pdf.setFont("Helvetica-Bold", 7)
@@ -1153,6 +1254,7 @@ def generate_screening_report(
     image_quality: str = DEFAULT_IMAGE_QUALITY,
     include_fft: bool = True,
     naming_profile: NamingProfile = DEFAULT_NAMING_PROFILE,
+    theme: ReportTheme | None = None,
 ) -> Path:
     """Generate the complete Atlas > GridSquare > FoilHole > Data report."""
 
@@ -1184,10 +1286,11 @@ def generate_screening_report(
     temporary_output = Path(temporary_name)
 
     try:
-        pdf = canvas.Canvas(
+        pdf = ReportCanvas(
             str(temporary_output),
             pagesize=PORTRAIT,
             pageCompression=1,
+            theme=theme,
         )
         pdf.setTitle(f"{grids[0].project_number} Screening Report")
         pdf.setAuthor("CryoEM Screening Report")
@@ -1286,6 +1389,7 @@ def generate_basic_report(
     image_quality: str = DEFAULT_IMAGE_QUALITY,
     include_fft: bool = True,
     naming_profile: NamingProfile = DEFAULT_NAMING_PROFILE,
+    theme: ReportTheme | None = None,
 ) -> Path:
     """Compatibility wrapper for callers of the original basic generator."""
 
@@ -1297,4 +1401,5 @@ def generate_basic_report(
         image_quality=image_quality,
         include_fft=include_fft,
         naming_profile=naming_profile,
+        theme=theme,
     )

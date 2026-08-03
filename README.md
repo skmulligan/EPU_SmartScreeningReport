@@ -16,7 +16,9 @@ The application provides:
   - A session and slot overview with Data-acquisition microscope configuration.
   - The atlas matched to each slot, marked with numbered acquired GridSquare
     positions from `Atlas.dm`.
-  - GridSquare images marked with every screened FoilHole location.
+  - GridSquare images marked with image-registered FoilHole positions derived
+    from the complete detected-hole lattice. The original EPU `PixelCenter` is
+    used automatically when image registration is unavailable.
   - Compact FoilHole sections using the latest image for each FoilHole ID.
   - Every matching Data image, with numbered acquisition fields marked on the
     FoilHole image when EPU metadata is available.
@@ -157,6 +159,80 @@ never modified and no derived PNG files are written. A missing, unreadable, or
 unsupported MRC produces a placeholder for that acquisition while the rest of
 the report continues. Clear the checkbox when a faster report without FFT pages
 is preferred.
+
+## Report themes and logos
+
+The **Report theme** selector applies the same JSON theme format to EPU and
+SerialEM reports. **Default** is an immutable copy of the original report
+appearance. On first launch, the application also creates an editable
+`current-look.json` starter theme. Use **Open Themes Folder** to find it, copy
+it under another filename, and change the copy. The selector rescans the folder
+whenever it is opened. **Browse** can select a JSON theme elsewhere for the
+current application session without copying or changing that file.
+
+The user theme folder is platform-specific:
+
+- Windows: `%APPDATA%\ScreeningReport\themes`
+- macOS: `~/Library/Application Support/ScreeningReport/themes`
+- Linux: `$XDG_CONFIG_HOME/screening-report/themes`, or
+  `~/.config/screening-report/themes` when `XDG_CONFIG_HOME` is unset
+
+Themes use a strict, versioned schema. All fields shown below are required so
+typos and incomplete themes fail with a useful message instead of silently
+changing the report:
+
+```json
+{
+  "schema_version": 1,
+  "name": "Current Look",
+  "colors": {
+    "primary": "#17324D",
+    "text": "#000000",
+    "secondary_text": "#475569",
+    "muted_text": "#64748B",
+    "border": "#E2E8F0",
+    "surface": "#F8FAFC",
+    "subtle_surface": "#F1F5F9",
+    "accent": "#C2410C",
+    "accent_surface": "#FFF7ED",
+    "accent_border": "#FED7AA",
+    "inverse_text": "#FFFFFF",
+    "success": "#22C55E",
+    "inactive": "#94A3B8",
+    "dark_surface": "#0F172A",
+    "dark_surface_text": "#CBD5E1"
+  },
+  "fonts": {
+    "heading": "Helvetica-Bold",
+    "body": "Helvetica",
+    "bold": "Helvetica-Bold",
+    "italic": "Helvetica-Oblique"
+  },
+  "branding": {
+    "logo": null,
+    "footer_text": null
+  }
+}
+```
+
+Colors must use `#RRGGBB`. Fonts must be built into ReportLab, such as
+Helvetica, Times, or Courier and their bold/italic variants; custom TTF files
+are not supported in this phase. A logo may be a PNG, JPG, or JPEG. Relative
+logo paths are resolved from the JSON file's directory, which makes a theme and
+its logo easy to copy together; absolute paths are also accepted. The same logo
+is placed at the upper-right of the cover and at the lower-left of every page,
+with transparency and aspect ratio preserved. Optional footer text is centered,
+and the page number moves to the lower-right for branded themes.
+
+Python callers can load a theme and pass it to any report generator:
+
+```python
+from screening_report import load_report_theme
+from screening_report.pdf_report import generate_screening_report
+
+theme = load_report_theme("themes/my-facility.json")
+generate_screening_report(output, atlas_directory, grids, theme=theme)
+```
 
 ## Expected directory layout
 

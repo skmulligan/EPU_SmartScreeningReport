@@ -13,7 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from PIL import Image, ImageDraw, ImageFont
+import numpy as np
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from .models import DataImageRecord, FoilHoleRecord, GridSquareRecord
 
@@ -46,9 +47,54 @@ class MicroscopeGeometry:
 class FoilMarker:
     foil_id: str
     label: int
-    x: float
-    y: float
-    in_bounds: bool
+    detected_x: float | None
+    detected_y: float | None
+    detected_in_bounds: bool | None
+    refined_x: float | None
+    refined_y: float | None
+    refined_in_bounds: bool | None
+    registered_x: float | None = None
+    registered_y: float | None = None
+    registered_in_bounds: bool | None = None
+
+    @property
+    def x(self) -> float:
+        """Retain the original marker API for callers that need one position."""
+
+        if self.detected_x is not None:
+            return self.detected_x
+        assert self.refined_x is not None
+        return self.refined_x
+
+    @property
+    def y(self) -> float:
+        """Retain the original marker API for callers that need one position."""
+
+        if self.detected_y is not None:
+            return self.detected_y
+        assert self.refined_y is not None
+        return self.refined_y
+
+    @property
+    def in_bounds(self) -> bool:
+        """Return the detected position status, or refined status as a fallback."""
+
+        value = (
+            self.detected_in_bounds
+            if self.detected_in_bounds is not None
+            else self.refined_in_bounds
+        )
+        return bool(value)
+
+
+@dataclass(frozen=True, slots=True)
+class TargetPosition:
+    """Physical EPU target position and its refinement state."""
+
+    stage_x: float
+    stage_y: float
+    is_corrected: bool
+    is_refined: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -277,6 +323,73 @@ def parse_dm_target_positions(
     return positions
 
 
+def parse_dm_refined_target_positions(
+    metadata_path: Path,
+) -> dict[str, TargetPosition]:
+    """Read final per-hole StagePosition values and correction flags.
+
+    ``StagePosition`` is intentionally selected instead of
+    ``CorrectedStagePosition``. EPU updates the former after hole-center
+    refinement, while the latter represents the position-correction transform
+    applied before that refinement image was evaluated.
+    """
+
+    root = _parse_xml(metadata_path)
+    if root is None:
+        return {}
+
+    targets: dict[str, TargetPosition] = {}
+    for pair in root.iter():
+        if not _local_name(pair.tag).startswith(
+            "keyvaluepairofinttargetlocation"
+        ):
+            continue
+        key = next(
+            (child for child in pair if _local_name(child.tag) == "key"),
+            None,
+        )
+        value = next(
+            (child for child in pair if _local_name(child.tag) == "value"),
+            None,
+        )
+        if key is None or not key.text or value is None:
+            continue
+        stage = next(
+            (
+                child
+                for child in value
+                if _local_name(child.tag) == "stageposition"
+            ),
+            None,
+        )
+        if stage is None:
+            continue
+        coordinates = {
+            _local_name(child.tag): _float_text(child)
+            for child in stage
+        }
+        if coordinates.get("x") is None or coordinates.get("y") is None:
+            continue
+
+        def _flag(name: str) -> bool:
+            element = next(
+                (child for child in value if _local_name(child.tag) == name),
+                None,
+            )
+            return bool(
+                element is not None
+                and (element.text or "").strip().lower() == "true"
+            )
+
+        targets[key.text.strip()] = TargetPosition(
+            stage_x=float(coordinates["x"]),
+            stage_y=float(coordinates["y"]),
+            is_corrected=_flag("ispositioncorrected"),
+            is_refined=_flag("ispositionrefined"),
+        )
+    return targets
+
+
 def parse_data_area_shifts(
     session_path: Path,
 ) -> dict[str, tuple[float, float]]:
@@ -484,6 +597,37 @@ def _fallback_foil_position(
     return x, y, 0 <= x < image_width and 0 <= y < image_height
 
 
+def _project_stage_position(
+    grid_geometry: MicroscopeGeometry,
+    stage_x: float,
+    stage_y: float,
+    grid_image_size: tuple[int, int],
+) -> tuple[float, float, bool] | None:
+    """Project a physical stage position onto the captured GridSquare image."""
+
+    if grid_geometry.stage_x is None or grid_geometry.stage_y is None:
+        return None
+    grid_width = grid_geometry.readout_width or 4096.0
+    grid_height = grid_geometry.readout_height or 4096.0
+    delta_x = stage_x - grid_geometry.stage_x
+    delta_y = stage_y - grid_geometry.stage_y
+    inverse = _inverse_matrix(grid_geometry.ref_matrix)
+    if inverse:
+        i11, i12, i21, i22 = inverse
+        raw_x = grid_width / 2.0 + i11 * delta_x + i12 * delta_y
+        raw_y = grid_height / 2.0 + i21 * delta_x + i22 * delta_y
+    elif grid_geometry.pixel_size:
+        raw_x = grid_width / 2.0 + delta_x / grid_geometry.pixel_size
+        raw_y = grid_height / 2.0 - delta_y / grid_geometry.pixel_size
+    else:
+        return None
+
+    image_width, image_height = grid_image_size
+    x = raw_x * image_width / grid_width
+    y = raw_y * image_height / grid_height
+    return x, y, 0 <= x < image_width and 0 <= y < image_height
+
+
 TRANSFORMS: dict[str, Callable[[float, float], tuple[float, float]]] = {
     "identity": lambda u, v: (u, v),
     "rot90": lambda u, v: (v, 1.0 - u),
@@ -536,6 +680,163 @@ def choose_pixel_center_transform(
             best_name = name
             best_coordinates = coordinates
     return best_name, best_coordinates
+
+
+def _otsu_threshold(values: "np.ndarray") -> float:
+    """Return an Otsu threshold for an 8-bit grayscale array."""
+
+    histogram = np.bincount(values.ravel(), minlength=256).astype(float)
+    total = histogram.sum()
+    if total == 0:
+        return 0.0
+    probability = histogram / total
+    cumulative = np.cumsum(probability)
+    means = np.cumsum(probability * np.arange(256))
+    global_mean = means[-1]
+    denominator = cumulative * (1.0 - cumulative)
+    variance = np.zeros(256, dtype=float)
+    valid = denominator > 0
+    variance[valid] = (
+        (global_mean * cumulative[valid] - means[valid]) ** 2
+        / denominator[valid]
+    )
+    return float(np.argmax(variance))
+
+
+def _largest_component_center(mask: "np.ndarray") -> tuple[float, float] | None:
+    """Return the center of the largest connected foreground component."""
+
+    height, width = mask.shape
+    visited = np.zeros_like(mask, dtype=bool)
+    largest: list[tuple[int, int]] = []
+    for start_y, start_x in zip(*np.nonzero(mask & ~visited)):
+        if visited[start_y, start_x]:
+            continue
+        component: list[tuple[int, int]] = []
+        stack = [(int(start_y), int(start_x))]
+        visited[start_y, start_x] = True
+        while stack:
+            y, x = stack.pop()
+            component.append((y, x))
+            for next_y in range(max(0, y - 1), min(height, y + 2)):
+                for next_x in range(max(0, x - 1), min(width, x + 2)):
+                    if mask[next_y, next_x] and not visited[next_y, next_x]:
+                        visited[next_y, next_x] = True
+                        stack.append((next_y, next_x))
+        if len(component) > len(largest):
+            largest = component
+    if not largest:
+        return None
+    coordinates = np.asarray(largest, dtype=float)
+    return float(np.median(coordinates[:, 1])), float(np.median(coordinates[:, 0]))
+
+
+def register_pixel_centers_to_foil(
+    image: Image.Image,
+    coordinates: dict[str, tuple[float, float, bool]],
+) -> tuple[dict[str, tuple[float, float, bool]], tuple[float, float] | None]:
+    """Translate the complete EPU hole cloud onto the largest visible foil.
+
+    This addresses GridSquare images whose recorded optical center disagrees
+    with the target map. It intentionally estimates only a global translation;
+    rotation and mirroring remain determined from EPU's physical metadata.
+    """
+
+    if len(coordinates) < 8:
+        return {}, None
+    analysis_size = 128
+    grayscale_small = image.convert("L").resize(
+        (analysis_size, analysis_size),
+        Image.Resampling.BILINEAR,
+    )
+    blurred = grayscale_small.filter(ImageFilter.GaussianBlur(radius=3.0))
+    pixels = np.asarray(blurred, dtype=np.uint8)
+    threshold = _otsu_threshold(pixels)
+    center = _largest_component_center(pixels > threshold)
+    if center is None:
+        return {}, None
+
+    scale_x = image.width / analysis_size
+    scale_y = image.height / analysis_size
+    foil_x = center[0] * scale_x
+    foil_y = center[1] * scale_y
+    points = np.asarray(
+        [(x, y) for x, y, _ in coordinates.values()],
+        dtype=float,
+    )
+    target_x = float(np.median(points[:, 0]))
+    target_y = float(np.median(points[:, 1]))
+    gross_offset_threshold = min(image.size) * 0.12
+    if math.hypot(foil_x - target_x, foil_y - target_y) < gross_offset_threshold:
+        return {}, None
+
+    grayscale = image.convert("L")
+    small_radius = max(1.0, min(image.size) / 256.0)
+    large_radius = max(5.0, min(image.size) / 36.0)
+    fine = np.asarray(
+        grayscale.filter(ImageFilter.GaussianBlur(radius=small_radius)),
+        dtype=float,
+    )
+    background = np.asarray(
+        grayscale.filter(ImageFilter.GaussianBlur(radius=large_radius)),
+        dtype=float,
+    )
+    response = fine - background
+    response_scale = max(float(np.std(response)), 1.0)
+    minimum_matches = max(6, math.ceil(len(points) * 0.65))
+
+    def _score(offset_x: int, offset_y: int) -> float:
+        moved_x = np.rint(points[:, 0] + offset_x).astype(int)
+        moved_y = np.rint(points[:, 1] + offset_y).astype(int)
+        valid = (
+            (moved_x >= 0)
+            & (moved_x < image.width)
+            & (moved_y >= 0)
+            & (moved_y < image.height)
+        )
+        if int(valid.sum()) < minimum_matches:
+            return -float("inf")
+        contrast = float(np.mean(response[moved_y[valid], moved_x[valid]]))
+        center_distance = math.hypot(
+            target_x + offset_x - foil_x,
+            target_y + offset_y - foil_y,
+        )
+        return contrast - 0.12 * response_scale * center_distance / min(image.size)
+
+    coarse_step = max(2, int(round(min(image.size) / 128)))
+    limit_x = int(image.width * 0.45)
+    limit_y = int(image.height * 0.45)
+    best_x = best_y = 0
+    best_score = _score(0, 0)
+    for offset_y in range(-limit_y, limit_y + 1, coarse_step):
+        for offset_x in range(-limit_x, limit_x + 1, coarse_step):
+            score = _score(offset_x, offset_y)
+            if score > best_score:
+                best_x, best_y, best_score = offset_x, offset_y, score
+    for offset_y in range(best_y - coarse_step, best_y + coarse_step + 1):
+        for offset_x in range(best_x - coarse_step, best_x + coarse_step + 1):
+            score = _score(offset_x, offset_y)
+            if score > best_score:
+                best_x, best_y, best_score = offset_x, offset_y, score
+
+    offset_x = float(best_x)
+    offset_y = float(best_y)
+    # A periodic hole lattice commonly produces a stronger adjacent-hole peak.
+    # This registration is therefore limited to gross square-center failures;
+    # small corrections are less trustworthy than EPU's direct PixelCenter.
+    if math.hypot(offset_x, offset_y) < gross_offset_threshold:
+        return {}, None
+
+    registered = {}
+    for foil_id, (x, y, _) in coordinates.items():
+        moved_x = x + offset_x
+        moved_y = y + offset_y
+        registered[foil_id] = (
+            moved_x,
+            moved_y,
+            0 <= moved_x < image.width and 0 <= moved_y < image.height,
+        )
+    return registered, (offset_x, offset_y)
 
 
 def _font(size: int, *, bold: bool = False) -> ImageFont.ImageFont:
@@ -607,6 +908,72 @@ def _draw_numbered_circle(
         font=font,
         stroke_width=1,
         stroke_fill="black",
+    )
+
+
+def _draw_numbered_diamond(
+    draw: ImageDraw.ImageDraw,
+    x: float,
+    y: float,
+    label: int,
+    color: str,
+    radius: int,
+) -> None:
+    """Draw the refined/acquired position distinctly from detected crosses."""
+
+    points = (
+        (x, y - radius),
+        (x + radius, y),
+        (x, y + radius),
+        (x - radius, y),
+    )
+    draw.line(
+        (*points, points[0]),
+        fill=color,
+        width=max(2, radius // 4),
+        joint="curve",
+    )
+    inner = max(3, radius // 2)
+    draw.line((x - inner, y - inner, x + inner, y + inner), fill=color, width=2)
+    draw.line((x - inner, y + inner, x + inner, y - inner), fill=color, width=2)
+    font = _font(max(10, radius - 1), bold=True)
+    draw.text(
+        (x + radius + 3, y),
+        f"{label}R",
+        fill="white",
+        font=font,
+        stroke_width=2,
+        stroke_fill="black",
+        anchor="lm",
+    )
+
+
+def _draw_numbered_square(
+    draw: ImageDraw.ImageDraw,
+    x: float,
+    y: float,
+    label: int,
+    color: str,
+    radius: int,
+) -> None:
+    """Draw an automatically image-registered position."""
+
+    draw.rectangle(
+        (x - radius, y - radius, x + radius, y + radius),
+        outline=color,
+        width=max(2, radius // 4),
+    )
+    draw.line((x - radius, y, x + radius, y), fill=color, width=2)
+    draw.line((x, y - radius, x, y + radius), fill=color, width=2)
+    font = _font(max(10, radius - 1), bold=True)
+    draw.text(
+        (x + radius + 3, y),
+        str(label),
+        fill="white",
+        font=font,
+        stroke_width=2,
+        stroke_fill="black",
+        anchor="lm",
     )
 
 
@@ -708,51 +1075,35 @@ def render_grid_square_overlay(
     metadata_path = metadata_directory / (
         metadata_name or f"GridSquare_{record.grid_square_id}.dm"
     )
-    dm_target_positions = parse_dm_target_positions(metadata_path)
+    refined_targets = parse_dm_refined_target_positions(metadata_path)
     fallbacks: dict[str, tuple[float, float, bool]] = {}
     for foil in record.foil_holes:
-        fallback = None
-        target = dm_target_positions.get(foil.foil_id)
-        if (
-            target
-            and grid_geometry.stage_x is not None
-            and grid_geometry.stage_y is not None
-            and grid_geometry.pixel_size
-        ):
-            base_width = grid_geometry.readout_width or 4096.0
-            base_height = grid_geometry.readout_height or 4096.0
-            raw_x = (
-                base_width / 2.0
-                + (target[0] - grid_geometry.stage_x) / grid_geometry.pixel_size
-            )
-            raw_y = (
-                base_height / 2.0
-                - (target[1] - grid_geometry.stage_y) / grid_geometry.pixel_size
-            )
-            x = raw_x * image.width / base_width
-            y = raw_y * image.height / base_height
-            in_bounds = 0 <= x < image.width and 0 <= y < image.height
-            fallback = (
-                min(max(x, 0.0), float(image.width - 1)),
-                min(max(y, 0.0), float(image.height - 1)),
-                in_bounds,
-            )
+        foil_image_size = None
+        if foil.image_path:
+            try:
+                with Image.open(foil.image_path) as foil_image:
+                    foil_image_size = foil_image.size
+            except OSError:
+                foil_image_size = None
+        fallback = _fallback_foil_position(
+            grid_geometry,
+            parse_microscope_geometry(foil.xml_path),
+            image.size,
+            foil_image_size,
+        )
         if fallback is None:
-            foil_image_size = None
-            if foil.image_path:
-                try:
-                    with Image.open(foil.image_path) as foil_image:
-                        foil_image_size = foil_image.size
-                except OSError:
-                    foil_image_size = None
-            fallback = _fallback_foil_position(
-                grid_geometry,
-                parse_microscope_geometry(foil.xml_path),
-                image.size,
-                foil_image_size,
-            )
+            target = refined_targets.get(foil.foil_id)
+            if target is not None and (target.is_corrected or target.is_refined):
+                fallback = _project_stage_position(
+                    grid_geometry,
+                    target.stage_x,
+                    target.stage_y,
+                    image.size,
+                )
         if fallback:
             fallbacks[foil.foil_id] = fallback
+
+    refined_positions = dict(fallbacks)
 
     dm_centers = parse_dm_pixel_centers(metadata_path)
     base_width = grid_geometry.readout_width or 4096.0
@@ -767,37 +1118,70 @@ def render_grid_square_overlay(
         fallbacks,
         image.size,
     )
+    registered, _ = register_pixel_centers_to_foil(image, transformed)
 
     markers: list[FoilMarker] = []
     for label, foil in enumerate(record.foil_holes, start=1):
-        coordinates = transformed.get(foil.foil_id) or fallbacks.get(foil.foil_id)
-        if coordinates is None:
+        detected = transformed.get(foil.foil_id)
+        refined = refined_positions.get(foil.foil_id)
+        image_registered = registered.get(foil.foil_id)
+        if detected is None and image_registered is None:
             continue
-        x, y, in_bounds = coordinates
-        x = min(max(x, 0.0), float(image.width - 1))
-        y = min(max(y, 0.0), float(image.height - 1))
+
+        def _clamp(
+            coordinates: tuple[float, float, bool] | None,
+        ) -> tuple[float | None, float | None, bool | None]:
+            if coordinates is None:
+                return None, None, None
+            x, y, in_bounds = coordinates
+            return (
+                min(max(x, 0.0), float(image.width - 1)),
+                min(max(y, 0.0), float(image.height - 1)),
+                in_bounds,
+            )
+
+        detected_x, detected_y, detected_in_bounds = _clamp(detected)
+        refined_x, refined_y, refined_in_bounds = _clamp(refined)
+        registered_x, registered_y, registered_in_bounds = _clamp(
+            image_registered
+        )
         markers.append(
             FoilMarker(
                 foil_id=foil.foil_id,
                 label=label,
-                x=x,
-                y=y,
-                in_bounds=in_bounds,
+                detected_x=detected_x,
+                detected_y=detected_y,
+                detected_in_bounds=detected_in_bounds,
+                refined_x=refined_x,
+                refined_y=refined_y,
+                refined_in_bounds=refined_in_bounds,
+                registered_x=registered_x,
+                registered_y=registered_y,
+                registered_in_bounds=registered_in_bounds,
             )
         )
 
     draw = ImageDraw.Draw(image)
     radius = max(9, int(min(image.size) * 0.018))
     for marker in markers:
-        color = "#22C55E" if marker.in_bounds else "#EF4444"
-        _draw_numbered_cross(
-            draw,
-            marker.x,
-            marker.y,
-            marker.label,
-            color,
-            radius,
-        )
+        if marker.registered_x is not None and marker.registered_y is not None:
+            _draw_numbered_square(
+                draw,
+                marker.registered_x,
+                marker.registered_y,
+                marker.label,
+                "#F59E0B" if marker.registered_in_bounds else "#EF4444",
+                radius,
+            )
+        elif marker.detected_x is not None and marker.detected_y is not None:
+            _draw_numbered_cross(
+                draw,
+                marker.detected_x,
+                marker.detected_y,
+                marker.label,
+                "#22C55E" if marker.detected_in_bounds else "#EF4444",
+                radius,
+            )
 
     warning = None
     if not markers and record.foil_holes:
