@@ -305,7 +305,7 @@ def generate_serialem_report(
     try:
         pdf = canvas.Canvas(str(temporary), pagesize=PORTRAIT, pageCompression=1)
         pdf.setTitle(session.title)
-        pdf.setAuthor("ScreeningReport")
+        pdf.setAuthor("CryoEM Screening Report")
         _draw_cover(pdf, session, slots, generated_at or datetime.now())
         for slot in slots:
             _notify(progress_callback, f"Rendering SerialEM slot {slot.number} overview...")

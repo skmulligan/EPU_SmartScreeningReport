@@ -1,7 +1,7 @@
-# ScreeningReport
+# CryoEM Screening Report
 
 A Windows-friendly Python application for building PDF summaries of cryo-EM
-screening sessions collected with EPU.
+screening sessions collected with Thermo Fisher EPU or SerialEM.
 
 The application provides:
 
@@ -32,7 +32,7 @@ pages.
 
 Choose **SerialEM** at the top of the application to build a report from
 display-ready images that do not have EPU metadata or consistent names. Select
-the SerialEM session root and ScreeningReport recursively scans JPG, JPEG, PNG,
+the SerialEM session root and CryoEM Screening Report recursively scans JPG, JPEG, PNG,
 and TIFF files. The original files are never changed.
 
 The importer suggests a slot and one of four report roles from filename hints:
@@ -78,14 +78,14 @@ followed by `_SlotN`, where `N` is the autoloader slot number from 1 through 12:
 ```
 
 The Atlas and `_SlotN` directories must be siblings in the same parent
-directory. When the Atlas directory is selected, ScreeningReport extracts the
+directory. When the Atlas directory is selected, CryoEM Screening Report extracts the
 slot number from each matching suffix and associates slot `N` with the Atlas
 image under `SampleN/Atlas/Atlas_*.jpg`.
 
 SmartScreening with CryoFlow can supply this naming structure automatically. If
 you are not using SmartScreening with CryoFlow, create the EPU Multigrid
 sessions with the same Atlas session name and append `_SlotN` to each session.
-ScreeningReport will then find the sessions and pull their GridSquare, FoilHole,
+CryoEM Screening Report will then find the sessions and pull their GridSquare, FoilHole,
 Data-image, and metadata information into the report.
 
 ## SerialEM naming convention
@@ -221,7 +221,7 @@ Open PowerShell, change to the downloaded project directory, and create a
 virtual environment. Replace the example path with the location of your copy:
 
 ```powershell
-cd C:\path\to\ScreeningReport
+cd C:\path\to\cryoem-screening-report
 py -3 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```

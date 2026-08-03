@@ -45,7 +45,7 @@ class ScreeningReportApp:
     ) -> None:
         self.root = root
         self.naming_profile = naming_profile
-        self.root.title("Screening Report")
+        self.root.title("CryoEM Screening Report")
 
         self.atlas_directory: Path | None = None
         self.grids: list[GridFolder] = []
@@ -117,7 +117,7 @@ class ScreeningReportApp:
         outer.columnconfigure(0, weight=1)
         outer.rowconfigure(3, weight=1)
 
-        ttk.Label(outer, text="Screening Report", style="Title.TLabel").grid(
+        ttk.Label(outer, text="CryoEM Screening Report", style="Title.TLabel").grid(
             row=0, column=0, sticky="w"
         )
         mode_frame = ttk.Frame(outer)

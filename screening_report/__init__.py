@@ -1,4 +1,4 @@
-"""ScreeningReport application package."""
+"""CryoEM Screening Report application package."""
 
 from .models import (
     AcquisitionMetadata,

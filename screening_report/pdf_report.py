@@ -1190,7 +1190,7 @@ def generate_screening_report(
             pageCompression=1,
         )
         pdf.setTitle(f"{grids[0].project_number} Screening Report")
-        pdf.setAuthor("ScreeningReport")
+        pdf.setAuthor("CryoEM Screening Report")
         _draw_cover(pdf, atlas_root, contents, timestamp)
 
         for content in contents:

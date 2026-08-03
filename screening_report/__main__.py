@@ -1,4 +1,4 @@
-"""Run the ScreeningReport desktop application."""
+"""Run the CryoEM Screening Report desktop application."""
 
 from .gui import main
 

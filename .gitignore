@@ -51,3 +51,5 @@ tmp/
 .DS_Store
 Launch_ScreeningReport.bat
 ScreeningReport.code-workspace
+Launch_CryoEM_Screening_Report.bat
+CryoEM-Screening-Report.code-workspace
