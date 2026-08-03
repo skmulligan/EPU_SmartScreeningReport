@@ -59,10 +59,11 @@ reclassifying every file. Relative image paths are preserved for files under
 the session root, and missing or relocated files are returned to review status.
 Raw MRC display is not supported in SerialEM mode in this release.
 
-## Default naming convention
+## Default EPU naming convention
 
-The default naming profile expects the Atlas session directory to begin with a
-six-digit project number in the `160xxx` series. For example:
+The application's default naming profile is for Thermo Fisher EPU sessions. It
+expects the Atlas session directory to begin with a six-digit project number in
+the `160xxx` series. For example:
 
 ```text
 160230_example_atlases_20260729
@@ -86,6 +87,49 @@ you are not using SmartScreening with CryoFlow, create the EPU Multigrid
 sessions with the same Atlas session name and append `_SlotN` to each session.
 ScreeningReport will then find the sessions and pull their GridSquare, FoilHole,
 Data-image, and metadata information into the report.
+
+## SerialEM naming convention
+
+SerialEM mode does not require the EPU directory layout. Images can be organized
+in any folder hierarchy under the selected session root and can use `.jpg`,
+`.jpeg`, `.png`, `.tif`, or `.tiff` extensions. Files that do not follow the
+convention below can still be included by assigning their slot, role, and square
+ID manually in the review table.
+
+For automatic assignment, use these case-insensitive naming requirements:
+
+- Put `slotN` in the filename or one of its parent directories, where `N` is a
+  slot number from 1 through 12. A space, underscore, or hyphen may separate
+  `slot` and the number, such as `slot2`, `slot_2`, or `slot-2`.
+- Name an overview image with `LMM`, `montage`, or `atlas` in the filename. If a
+  slot has several overview images, include `screened` in the filename of the
+  one that should be the primary overview; the others are supplemental.
+- Name a square image with `sq<ID>` or `square<ID>`, where `<ID>` is an
+  alphanumeric square identifier. A space, underscore, or hyphen may separate
+  the token and ID.
+- Name each record image with both its parent square token and `rec<ID>` or
+  `record<ID>`. Record images are displayed in natural filename order within
+  the square.
+
+A simple SerialEM session can therefore be organized as:
+
+```text
+160230_serialem_screening/
+├── slot2/
+│   ├── slot2_LMM_screened.jpg
+│   ├── slot2_sq1.jpg
+│   ├── slot2_sq1_rec1.jpg
+│   └── slot2_sq1_rec2.jpg
+└── slot3/
+    ├── slot3_LMM_screened.jpg
+    └── slot3_sq1.jpg
+```
+
+Each included image must ultimately have a slot and report role, and each
+record must have a square ID. A slot may have at most one primary overview and
+each square ID may have at most one square image. Ambiguous overview choices,
+duplicate square images, unknown roles, and filenames without valid slot hints
+remain in review until they are corrected, confirmed, or excluded.
 
 ## PDF image quality
 
@@ -135,10 +179,10 @@ slot folders are found automatically.
 ## Naming profiles
 
 Directory and filename conventions are represented by a `NamingProfile`.
-The built-in `Thermo Fisher EPU` profile preserves the default layout described
-above. Discovery functions accept an alternate profile, allowing another lab's
-names to be normalized into the same project, slot, GridSquare, FoilHole, and
-acquisition-area identifiers used by the report.
+The built-in `Thermo Fisher EPU` profile preserves the default EPU layout
+described above. Discovery functions accept an alternate profile, allowing
+another lab's names to be normalized into the same project, slot, GridSquare,
+FoilHole, and acquisition-area identifiers used by the report.
 
 Patterns use regular expressions with named groups. Depending on the file type,
 profiles provide groups such as `project`, `session`, `slot`,
