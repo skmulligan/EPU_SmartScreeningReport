@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import sys
 from dataclasses import dataclass
 from importlib.resources import files
@@ -104,6 +103,38 @@ _COLOR_KEYS = {
 }
 _FONT_KEYS = {"heading", "body", "bold", "italic"}
 _BRANDING_KEYS = {"logo", "footer_text"}
+_DEFAULT_THEME_JSON = """{
+  "schema_version": 1,
+  "name": "Current Look",
+  "colors": {
+    "primary": "#17324D",
+    "text": "#000000",
+    "secondary_text": "#475569",
+    "muted_text": "#64748B",
+    "border": "#E2E8F0",
+    "surface": "#F8FAFC",
+    "subtle_surface": "#F1F5F9",
+    "accent": "#C2410C",
+    "accent_surface": "#FFF7ED",
+    "accent_border": "#FED7AA",
+    "inverse_text": "#FFFFFF",
+    "success": "#22C55E",
+    "inactive": "#94A3B8",
+    "dark_surface": "#0F172A",
+    "dark_surface_text": "#CBD5E1"
+  },
+  "fonts": {
+    "heading": "Helvetica-Bold",
+    "body": "Helvetica",
+    "bold": "Helvetica-Bold",
+    "italic": "Helvetica-Oblique"
+  },
+  "branding": {
+    "logo": null,
+    "footer_text": null
+  }
+}
+"""
 
 
 def _mapping(value: Any, field: str) -> dict[str, Any]:
@@ -139,7 +170,7 @@ def _parse_font(value: Any, field: str) -> str:
     return value
 
 
-def _parse_branding(payload: dict[str, Any], source: Path) -> ThemeBranding:
+def _parse_branding(payload: dict[str, Any], source: Path | None) -> ThemeBranding:
     _validate_keys(payload, _BRANDING_KEYS, "branding")
     raw_logo = payload["logo"]
     if raw_logo is None:
@@ -149,6 +180,8 @@ def _parse_branding(payload: dict[str, Any], source: Path) -> ThemeBranding:
     else:
         logo = Path(raw_logo).expanduser()
         if not logo.is_absolute():
+            if source is None:
+                raise ThemeError("An embedded theme cannot use a relative branding.logo path.")
             logo = source.parent / logo
         logo = logo.resolve()
         if not logo.is_file():
@@ -169,19 +202,7 @@ def _parse_branding(payload: dict[str, Any], source: Path) -> ThemeBranding:
     return ThemeBranding(logo=logo, footer_text=footer_text)
 
 
-def load_report_theme(path: str | Path) -> ReportTheme:
-    """Load a strict version-1 report theme from JSON."""
-
-    source = Path(path).expanduser().resolve()
-    try:
-        payload = json.loads(source.read_text(encoding="utf-8"))
-    except OSError as exc:
-        raise ThemeError(f"Could not read theme {source}: {exc}") from exc
-    except json.JSONDecodeError as exc:
-        raise ThemeError(
-            f"Invalid JSON in {source.name} at line {exc.lineno}, column {exc.colno}: {exc.msg}."
-        ) from exc
-
+def _report_theme_from_payload(payload: Any, source: Path | None) -> ReportTheme:
     root = _mapping(payload, "theme")
     _validate_keys(root, _ROOT_KEYS, "theme")
     if (
@@ -221,6 +242,21 @@ def load_report_theme(path: str | Path) -> ReportTheme:
     )
 
 
+def load_report_theme(path: str | Path) -> ReportTheme:
+    """Load a strict version-1 report theme from JSON."""
+
+    source = Path(path).expanduser().resolve()
+    try:
+        payload = json.loads(source.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise ThemeError(f"Could not read theme {source}: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise ThemeError(
+            f"Invalid JSON in {source.name} at line {exc.lineno}, column {exc.colno}: {exc.msg}."
+        ) from exc
+    return _report_theme_from_payload(payload, source)
+
+
 def bundled_default_theme_path() -> Path:
     """Return the filesystem path of the packaged immutable default theme."""
 
@@ -228,7 +264,13 @@ def bundled_default_theme_path() -> Path:
     return Path(str(resource))
 
 
-DEFAULT_REPORT_THEME = load_report_theme(bundled_default_theme_path())
+def default_theme_json() -> str:
+    """Return the immutable default JSON without requiring a package-data file."""
+
+    return _DEFAULT_THEME_JSON
+
+
+DEFAULT_REPORT_THEME = _report_theme_from_payload(json.loads(_DEFAULT_THEME_JSON), None)
 
 
 def _color_key(value: Any) -> tuple[float, float, float, float]:
@@ -318,7 +360,7 @@ def ensure_user_theme_directory(directory: Path | None = None) -> Path:
     target.mkdir(parents=True, exist_ok=True)
     starter = target / "current-look.json"
     if not starter.exists():
-        shutil.copyfile(bundled_default_theme_path(), starter)
+        starter.write_text(default_theme_json(), encoding="utf-8")
     return target
 
 

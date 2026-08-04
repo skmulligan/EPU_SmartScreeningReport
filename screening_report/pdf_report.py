@@ -1170,7 +1170,7 @@ def _draw_fft_row(
     pdf.setFillColor(PALE_BLUE)
     pdf.roundRect(row_x, row_bottom, row_width, row_height, 7, fill=1, stroke=0)
 
-    title = f"FoilHole {foil.foil_id}"
+    title = f"FFT power spectra - FoilHole {foil.foil_id}"
     if continued:
         title += " (continued)"
     pdf.setFillColor(NAVY)
@@ -1201,10 +1201,11 @@ def _draw_fft_row(
         )
 
 
-def _draw_fft_detail_pages(
+def _draw_paired_foil_fft_pages(
     pdf: canvas.Canvas,
     content: SlotContent,
     record: GridSquareRecord,
+    overlays: dict[str, DataOverlayResult | None],
     image_profile: ImageQualityProfile,
     progress_callback: ProgressCallback | None,
 ) -> None:
@@ -1212,12 +1213,11 @@ def _draw_fft_detail_pages(
         (foil, continued, chunk)
         for foil in record.foil_holes
         for continued, chunk in _foil_segments(foil)
-        if chunk
     ]
     if not segments:
         return
 
-    for page_start in range(0, len(segments), 2):
+    for foil, continued, chunk in segments:
         pdf.setPageSize(LANDSCAPE)
         pdf.setFillColor(NAVY)
         pdf.setFont("Helvetica-Bold", 15)
@@ -1226,17 +1226,24 @@ def _draw_fft_detail_pages(
             LANDSCAPE[1] - 32,
             (
                 f"Slot {content.grid.slot} - GridSquare "
-                f"{record.grid_square_id} - FFT power spectra"
+                f"{record.grid_square_id} - FoilHole details and FFT power spectra"
             ),
         )
-        page_segments = segments[page_start : page_start + 2]
-        for row_index, (foil, continued, chunk) in enumerate(page_segments):
-            y_top = LANDSCAPE[1] - 50 - row_index * 248
+        _draw_foil_row(
+            pdf,
+            foil,
+            overlays.get(foil.foil_id),
+            chunk,
+            LANDSCAPE[1] - 50,
+            continued=continued,
+            image_profile=image_profile,
+        )
+        if chunk:
             _draw_fft_row(
                 pdf,
                 foil,
                 chunk,
-                y_top,
+                LANDSCAPE[1] - 298,
                 continued=continued,
                 image_profile=image_profile,
                 progress_callback=progress_callback,
@@ -1354,20 +1361,22 @@ def generate_screening_report(
                         )
                     except Exception:
                         foil_overlays[foil.foil_id] = None
-                _draw_foil_detail_pages(
-                    pdf,
-                    content,
-                    record,
-                    foil_overlays,
-                    image_profile,
-                )
                 if include_fft:
-                    _draw_fft_detail_pages(
+                    _draw_paired_foil_fft_pages(
                         pdf,
                         content,
                         record,
+                        foil_overlays,
                         image_profile,
                         progress_callback,
+                    )
+                else:
+                    _draw_foil_detail_pages(
+                        pdf,
+                        content,
+                        record,
+                        foil_overlays,
+                        image_profile,
                     )
 
         pdf.save()

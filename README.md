@@ -151,8 +151,9 @@ embedding full-resolution microscope JPGs in small page regions.
 
 The **Include FFT power spectra** option is enabled by default. For each Data
 JPG, the report looks for a same-stem `.mrc` file and generates a centered,
-log-scaled power spectrum on dedicated landscape pages. The calculation removes
-the image mean and applies a Hann window before the two-dimensional FFT.
+log-scaled power spectrum directly beneath the corresponding Data thumbnail on
+the same landscape page. The calculation removes the image mean and applies a
+Hann window before the two-dimensional FFT.
 
 Spectra are held only in memory while the PDF is generated. The EPU session is
 never modified and no derived PNG files are written. A missing, unreadable, or
@@ -233,6 +234,14 @@ from screening_report.pdf_report import generate_screening_report
 theme = load_report_theme("themes/my-facility.json")
 generate_screening_report(output, atlas_directory, grids, theme=theme)
 ```
+
+When building a frozen executable with PyInstaller, the immutable default is
+embedded in the Python module so application startup and creation of
+`current-look.json` do not depend on an external data file. It is still useful
+to add `--collect-data screening_report` to the existing PyInstaller command,
+or the equivalent `collect_data_files("screening_report")` entry to a spec
+file, so the human-readable packaged `themes/default.json` remains available
+inside the distribution.
 
 ## Expected directory layout
 

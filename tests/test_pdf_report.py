@@ -115,13 +115,17 @@ def test_generates_landscape_gridsquare_and_foil_pages(tmp_path: Path) -> None:
     generate_basic_report(output, atlas_root, grids)
 
     with pdfplumber.open(output) as pdf:
-        assert len(pdf.pages) == 5
+        assert len(pdf.pages) == 4
         assert pdf.pages[0].width < pdf.pages[0].height
         assert pdf.pages[1].width < pdf.pages[1].height
         assert pdf.pages[2].width > pdf.pages[2].height
         assert pdf.pages[3].width > pdf.pages[3].height
-        assert pdf.pages[4].width > pdf.pages[4].height
+        detail_text = pdf.pages[3].extract_text() or ""
         text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+    assert "FoilHole 20" in detail_text
+    assert "Area 900" in detail_text
+    assert "FFT power spectra" in detail_text
+    assert "MRC unavailable" in detail_text
     assert "GridSquare 10" in text
     assert "FoilHole 20" in text
     assert "Data acquisition configuration" in text

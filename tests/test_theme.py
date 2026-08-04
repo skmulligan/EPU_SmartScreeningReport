@@ -14,6 +14,7 @@ from screening_report.theme import (
     DEFAULT_REPORT_THEME,
     ThemeError,
     bundled_default_theme_path,
+    default_theme_json,
     discover_report_themes,
     ensure_user_theme_directory,
     load_report_theme,
@@ -61,6 +62,9 @@ def test_bundled_default_matches_current_report_appearance() -> None:
     assert theme.fonts.body == "Helvetica"
     assert theme.branding.logo is None
     assert theme.branding.footer_text is None
+    assert json.loads(default_theme_json()) == json.loads(
+        bundled_default_theme_path().read_text(encoding="utf-8")
+    )
 
 
 def test_starter_theme_is_created_once_and_not_overwritten(tmp_path: Path) -> None:
@@ -73,6 +77,21 @@ def test_starter_theme_is_created_once_and_not_overwritten(tmp_path: Path) -> No
     starter.write_text("user content", encoding="utf-8")
     ensure_user_theme_directory(themes)
     assert starter.read_text(encoding="utf-8") == "user content"
+
+
+def test_starter_creation_does_not_require_bundled_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "screening_report.theme.bundled_default_theme_path",
+        lambda: (_ for _ in ()).throw(FileNotFoundError("frozen executable")),
+    )
+
+    ensure_user_theme_directory(tmp_path)
+
+    assert json.loads((tmp_path / "current-look.json").read_text(encoding="utf-8"))[
+        "name"
+    ] == "Current Look"
 
 
 def test_discovery_sorts_valid_themes_and_collects_errors(tmp_path: Path) -> None:
